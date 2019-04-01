@@ -20,16 +20,27 @@ def mloss(pt, fp, color_l, color_r, grad_l, grad_r, alpha=0.9, gamma=10, window_
     if np.min(x - d) < 0 or np.max(x - d) >= color_l.shape[1]:
         return np.inf
     rou = (1 - alpha) * np.minimum(np.linalg.norm(color_l[y, x] - color_r[y, x-d], ord=1, axis=1), tau_col) + \
-        alpha * np.minimum(np.abs(grad_l[y, x] - grad_r[y, x-d]), tau_grad)
-    loss = np.dot(weights, rou) / weights.size
+        alpha * np.minimum(np.linalg.norm(grad_l[y, x] - grad_r[y, x-d], ord=1, axis=1), tau_grad)
+    loss = np.dot(weights, rou)
     return loss
 
 
 def PatchMatch(img_l, img_r, dmax):
     gray_l = cv2.cvtColor(img_l, cv2.COLOR_BGR2GRAY)
-    lap_l = cv2.Laplacian(gray_l, cv2.CV_32F)
+    grad_l = np.stack([cv2.Sobel(gray_l, cv2.CV_32F, 1, 0, None, 3, 1, 0, cv2.BORDER_DEFAULT),
+                       cv2.Sobel(gray_l, cv2.CV_32F, 0, 1, None, 3, 1, 0, cv2.BORDER_DEFAULT)], -1) / 8.
     gray_r = cv2.cvtColor(img_r, cv2.COLOR_BGR2GRAY)
-    lap_r = cv2.Laplacian(gray_r, cv2.CV_32F)
+    grad_r = np.stack([cv2.Sobel(gray_r, cv2.CV_32F, 1, 0, None, 3, 1, 0, cv2.BORDER_DEFAULT),
+                       cv2.Sobel(gray_r, cv2.CV_32F, 0, 1, None, 3, 1, 0, cv2.BORDER_DEFAULT)], -1) / 8.
+    # cv2.imshow('grad', grad_l[:, :, 1])
+    # cv2.waitKey()
+
+    img_l = cv2.copyMakeBorder(img_l, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
+    img_r = cv2.copyMakeBorder(img_r, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
+    gray_l = cv2.copyMakeBorder(gray_l, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
+    gray_r = cv2.copyMakeBorder(gray_r, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
+    grad_l = cv2.copyMakeBorder(grad_l, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
+    grad_r = cv2.copyMakeBorder(grad_r, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
 
     xv, yv = np.meshgrid(np.arange(img_l.shape[1]), np.arange(img_l.shape[0]))
     xv = xv.astype(np.float) - img_l.shape[1] / 2
@@ -49,19 +60,10 @@ def PatchMatch(img_l, img_r, dmax):
     cv2.imshow('disp', (fp[:, :, 0] * xv + fp[:, :, 1] * yv + fp[:, :, 2]) / dmax)
     cv2.waitKey(30)
 
-    img_l = cv2.copyMakeBorder(img_l, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
-    img_r = cv2.copyMakeBorder(img_r, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
-    gray_l = cv2.copyMakeBorder(gray_l, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
-    gray_r = cv2.copyMakeBorder(gray_r, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
-    lap_l = cv2.copyMakeBorder(lap_l, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
-    lap_r = cv2.copyMakeBorder(lap_r, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
-    fp = cv2.copyMakeBorder(fp, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
-    dp = cv2.copyMakeBorder(dp, dmax, dmax, dmax, dmax, cv2.BORDER_CONSTANT, value=0)
-
     loss = np.zeros([img_l.shape[0], img_l.shape[1]], dtype=np.float32)
     for x in tqdm(range(dmax, img_l.shape[1] - dmax)):
         for y in range(dmax, img_l.shape[0] - dmax):
-            loss[y, x] = mloss((x, y), fp[y, x], img_l, img_r, lap_l, lap_r)
+            loss[y, x] = mloss((x, y), fp[y, x], img_l, img_r, grad_l, grad_r)
 
     # print(loss[loss != np.inf].max())
     # cv2.imshow('loss', loss / loss[loss != np.inf].max())
@@ -71,15 +73,15 @@ def PatchMatch(img_l, img_r, dmax):
 
     def iteration(x, y, inc):
         # spatial propogation
-        loss1 = mloss((x, y), fp[y + inc, x], img_l, img_r, lap_l, lap_r)
+        loss1 = mloss((x, y), fp[y + inc, x], img_l, img_r, grad_l, grad_r)
         if loss[y, x] > loss1:
             fp[y, x] = fp[y + inc, x]
-            dp[y, x] = np.dot((x, y, 1), fp[y, x])
+            dp[y, x] = np.dot((x - img_l.shape[1] / 2, y - img_l.shape[0] / 2, 1), fp[y, x])
             loss[y, x] = loss1
-        loss2 = mloss((x, y), fp[y, x + inc], img_l, img_r, lap_l, lap_r)
+        loss2 = mloss((x, y), fp[y, x + inc], img_l, img_r, grad_l, grad_r)
         if loss[y, x] > loss2:
             fp[y, x] = fp[y, x + inc]
-            dp[y, x] = np.dot((x, y, 1), fp[y, x])
+            dp[y, x] = np.dot((x - img_l.shape[1] / 2, y - img_l.shape[0] / 2, 1), fp[y, x])
             loss[y, x] = loss2
 
         # random refinement
@@ -89,29 +91,31 @@ def PatchMatch(img_l, img_r, dmax):
             normal = fp[y, x] / np.linalg.norm(fp[y, x]) + (np.random.rand(3) * 2 - 1) * dn
             normal = normal / np.linalg.norm(normal)
             disp = dp[y, x] + (np.random.rand() * 2 - 1) * dz
-            plane = normal * disp / np.dot((x, y, 1), normal)
-            potential = mloss((x, y), plane, img_l, img_r, lap_l, lap_r)
+            plane = normal * disp / np.dot((x - img_l.shape[1] / 2, y - img_l.shape[0] / 2, 1), normal)
+            potential = mloss((x, y), plane, img_l, img_r, grad_l, grad_r)
             if loss[y, x] > potential:
                 fp[y, x] = plane
-                dp[y, x] = np.dot((x, y, 1), fp[y, x])
+                dp[y, x] = np.dot((x - img_l.shape[1] / 2, y - img_l.shape[0] / 2, 1), fp[y, x])
                 loss[y, x] = potential
             dz /= 2
             dn /= 2
 
     for it in range(3):
         if it % 2 == 0:
-            for x in tqdm(range(dmax + 1, img_l.shape[1] - dmax)):
-                for y in range(dmax + 1, img_l.shape[0] - dmax):
+            for y in tqdm(range(dmax + 1, img_l.shape[0] - dmax)):
+                for x in range(dmax + 1, img_l.shape[1] - dmax):
                     iteration(x, y, -1)
+                cv2.imshow('disp', dp[dmax:-dmax, dmax:-dmax] / dmax)
+                cv2.waitKey(1)
         else:
-            for x in tqdm(reversed(range(dmax, img_l.shape[1] - dmax - 1))):
-                for y in reversed(range(dmax, img_l.shape[0] - dmax - 1)):
+            for y in tqdm(reversed(range(dmax, img_l.shape[0] - dmax - 1))):
+                for x in reversed(range(dmax, img_l.shape[1] - dmax - 1)):
                     iteration(x, y, 1)
+                cv2.imshow('disp', dp[dmax:-dmax, dmax:-dmax] / dmax)
+                cv2.waitKey(1)
 
-        fp_display = fp.copy()
-        fp_display[loss == np.inf] = 0
-        cv2.imshow('disp', (fp_display[dmax:-dmax, dmax:-dmax, 0] * xv + fp_display[dmax:-dmax, dmax:-dmax, 1] * yv + fp_display[dmax:-dmax, dmax:-dmax, 2]) / dmax)
-        cv2.waitKey(30)
+        cv2.imshow('disp', dp[dmax:-dmax, dmax:-dmax] / dmax)
+        cv2.waitKey(0)
     cv2.waitKey(0)
 
 
