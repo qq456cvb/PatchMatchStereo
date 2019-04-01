@@ -10,3 +10,6 @@ Note I use the planar model defined in 3D space (depth) while the author uses di
 * implement view propogation
 * implement post-processing
 * implement on CUDA
+
+# Result (after 1 iteration)
+![result](https://github.com/qq456cvb/PatchMatchStereo/raw/master/result1.PNG)
