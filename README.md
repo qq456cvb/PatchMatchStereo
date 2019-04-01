@@ -8,3 +8,6 @@ This repo (partially) implements patch match stereo algorithm described in the p
 * implement view propogation
 * implement post-processing
 * implement on CUDA
+
+# Result (after 1 iteration)
+![result](https://github.com/qq456cvb/PatchMatchStereo/raw/master/result1.PNG)
