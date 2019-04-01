@@ -4,7 +4,7 @@ import math
 from tqdm import tqdm
 
 
-def mloss(pt, fp, color_l, color_r, grad_l, grad_r, alpha=0.9, gamma=10, window_size=15, tau_col=10, tau_grad=2):
+def mloss(pt, fp, color_l, color_r, grad_l, grad_r, alpha=0.9, gamma=10, window_size=35, tau_col=10, tau_grad=2):
     y, x = np.meshgrid(np.arange(pt[1] - window_size // 2, pt[1] + window_size // 2 + 1),
                              np.arange(pt[0] - window_size // 2, pt[0] + window_size // 2 + 1))
     x = x.reshape(-1)
@@ -66,55 +66,53 @@ def PatchMatch(img_l, img_r, dmax):
     # print(loss[loss != np.inf].max())
     # cv2.imshow('loss', loss / loss[loss != np.inf].max())
     # cv2.waitKey()
-    # fp_display = fp.copy()
-    # fp_display[loss == np.inf] = 0
-    # cv2.imshow('disp', (
-    #             fp_display[dmax:-dmax, dmax:-dmax, 0] * xv + fp_display[dmax:-dmax, dmax:-dmax, 1] * yv + fp_display[
-    #                                                                                                       dmax:-dmax,
-    #                                                                                                       dmax:-dmax,
-    #                                                                                                       2]) / dmax)
-    # cv2.waitKey(0)
     dnmax = 1
     dzmax = dmax / 2
-    for it in range(3):
-        iter1 = range(dmax + 1, img_l.shape[1] - dmax)
-        iter2 = range(dmax + 1, img_l.shape[0] - dmax)
-        if it % 2 == 1:
-            iter1 = reversed(iter1)
-            iter2 = reversed(iter2)
-        for x in tqdm(iter1):
-            for y in iter2:
-                # spatial propogation
-                loss1 = mloss((x, y), fp[y - 1, x], img_l, img_r, lap_l, lap_r)
-                if loss[y, x] > loss1:
-                    fp[y, x] = fp[y - 1, x]
-                    dp[y, x] = np.dot((x, y, 1), fp[y, x])
-                    loss[y, x] = loss1
-                loss2 = mloss((x, y), fp[y, x - 1], img_l, img_r, lap_l, lap_r)
-                if loss[y, x] > loss2:
-                    fp[y, x] = fp[y, x - 1]
-                    dp[y, x] = np.dot((x, y, 1), fp[y, x])
-                    loss[y, x] = loss2
 
-                # random refinement
-                dn = dnmax
-                dz = dzmax
-                while dz > 0.1:
-                    normal = fp[y, x] / np.linalg.norm(fp[y, x]) + (np.random.rand(3) * 2 - 1) * dn
-                    normal = normal / np.linalg.norm(normal)
-                    disp = dp[y, x] + (np.random.rand() * 2 - 1) * dz
-                    plane = normal * disp / np.dot((x, y, 1), normal)
-                    potential = mloss((x, y), plane, img_l, img_r, lap_l, lap_r)
-                    if loss[y, x] > potential:
-                        fp[y, x] = plane
-                        dp[y, x] = np.dot((x, y, 1), fp[y, x])
-                        loss[y, x] = potential
-                    dz /= 2
-                    dn /= 2
+    def iteration(x, y, inc):
+        # spatial propogation
+        loss1 = mloss((x, y), fp[y + inc, x], img_l, img_r, lap_l, lap_r)
+        if loss[y, x] > loss1:
+            fp[y, x] = fp[y + inc, x]
+            dp[y, x] = np.dot((x, y, 1), fp[y, x])
+            loss[y, x] = loss1
+        loss2 = mloss((x, y), fp[y, x + inc], img_l, img_r, lap_l, lap_r)
+        if loss[y, x] > loss2:
+            fp[y, x] = fp[y, x + inc]
+            dp[y, x] = np.dot((x, y, 1), fp[y, x])
+            loss[y, x] = loss2
+
+        # random refinement
+        dn = dnmax
+        dz = dzmax
+        while dz > 0.1:
+            normal = fp[y, x] / np.linalg.norm(fp[y, x]) + (np.random.rand(3) * 2 - 1) * dn
+            normal = normal / np.linalg.norm(normal)
+            disp = dp[y, x] + (np.random.rand() * 2 - 1) * dz
+            plane = normal * disp / np.dot((x, y, 1), normal)
+            potential = mloss((x, y), plane, img_l, img_r, lap_l, lap_r)
+            if loss[y, x] > potential:
+                fp[y, x] = plane
+                dp[y, x] = np.dot((x, y, 1), fp[y, x])
+                loss[y, x] = potential
+            dz /= 2
+            dn /= 2
+
+    for it in range(3):
+        if it % 2 == 0:
+            for x in tqdm(range(dmax + 1, img_l.shape[1] - dmax)):
+                for y in range(dmax + 1, img_l.shape[0] - dmax):
+                    iteration(x, y, -1)
+        else:
+            for x in tqdm(reversed(range(dmax, img_l.shape[1] - dmax - 1))):
+                for y in reversed(range(dmax, img_l.shape[0] - dmax - 1)):
+                    iteration(x, y, 1)
+
         fp_display = fp.copy()
         fp_display[loss == np.inf] = 0
         cv2.imshow('disp', (fp_display[dmax:-dmax, dmax:-dmax, 0] * xv + fp_display[dmax:-dmax, dmax:-dmax, 1] * yv + fp_display[dmax:-dmax, dmax:-dmax, 2]) / dmax)
         cv2.waitKey(30)
+    cv2.waitKey(0)
 
 
 if __name__ == '__main__':
