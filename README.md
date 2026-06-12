@@ -1,49 +1,39 @@
 # PatchMatchStereo
 
-<!-- README refined by Cursor -->
+A compact Python/NumPy implementation of [PatchMatch Stereo — Stereo Matching with Slanted Support Windows](https://www.microsoft.com/en-us/research/wp-content/uploads/2011/01/PatchMatchStereo_BMVC2011_6MB.pdf) (Bleyer, Rhemann & Rother, BMVC 2011).
 
-https://www.microsoft.com/en-us/research/wp-content/uploads/2011/01/PatchMatchStereo_BMVC2011_6MB.pdf
+Instead of assigning each pixel a fronto-parallel disparity, PatchMatch Stereo estimates a **slanted disparity plane** per pixel, which models tilted surfaces correctly and yields sub-pixel disparities. Good planes are found surprisingly fast with PatchMatch-style random search: start from random planes, then alternately propagate good planes from neighbors and refine them with a shrinking random search.
 
-## Overview
+## What's Implemented
 
-This repository contains Python code from an older research, course, or prototype project. The README has been refreshed to make the repository easier to scan while preserving the original notes below.
+- **Per-pixel slanted planes**: each pixel carries a 3-parameter plane; disparity is evaluated as a plane equation over the support window
+- **Adaptive support-weight matching cost**: truncated color + gradient dissimilarity, weighted by color similarity to the window center (`mloss`, Eq. 3–5 of the paper)
+- **Random initialization**: plane normals sampled uniformly on the hemisphere, random disparities within `[0, dmax]`
+- **Spatial propagation**: alternating raster / reverse-raster passes adopting a neighbor's plane when it lowers the cost
+- **Plane refinement**: random perturbation of normal and disparity with exponentially shrinking search radii
 
-## Repository Contents
+Not implemented (contributions welcome): view propagation, post-processing (left-right consistency + weighted median filling), and a CUDA port — the pure-NumPy inner loop is slow, so expect minutes per iteration.
 
-- Top-level source files and project assets.
+## Run
 
-## Setup
+```bash
+pip install opencv-python numpy tqdm
+python main.py
+```
 
-- This legacy repo does not pin a full environment. Start from the language/toolchain implied by the source files, then install missing packages as reported by the runtime.
+The demo runs three propagation/refinement iterations on the bundled Middlebury *Cones* pair (`im2.png` / `im6.png`, `dmax = 50`) and displays the evolving disparity map after each row (press a key after each iteration to continue).
 
-## Usage
+## Result (after 1 iteration)
 
-- `python main.py`
-
-## Data and Artifacts
-
-No new large artifact is stored in this repository. If a dataset or checkpoint is required, follow the links and notes in the original section below.
-
-## Status
-
-This is a `Batch B` cleanup pass for a legacy repository. Commands may require dependency/version adjustments on a modern machine.
-
-## License
-
-No explicit license file was found in this checkout; check the original project context before reusing code.
-
-## Original Notes
-
-# PatchMatchStereo
-https://www.microsoft.com/en-us/research/wp-content/uploads/2011/01/PatchMatchStereo_BMVC2011_6MB.pdf
-
-# Description
-This repo (partially) implements patch match stereo algorithm described in the paper.
-
-# TODO
-* implement view propogation
-* implement post-processing
-* implement on CUDA
-
-# Result (after 1 iteration)
 ![result](https://github.com/qq456cvb/PatchMatchStereo/raw/master/result1.PNG)
+
+## Reference
+
+```bibtex
+@inproceedings{bleyer2011patchmatch,
+  title={PatchMatch Stereo - Stereo Matching with Slanted Support Windows},
+  author={Bleyer, Michael and Rhemann, Christoph and Rother, Carsten},
+  booktitle={British Machine Vision Conference (BMVC)},
+  year={2011}
+}
+```
